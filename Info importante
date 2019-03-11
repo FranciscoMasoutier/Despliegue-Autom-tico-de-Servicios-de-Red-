@@ -1,0 +1,91 @@
+
+*****	ADECUANDO LA RED HOST-ONLY-ADAPTER (Virtualbox)	*****
+
+Configuraciones de la red:
+	ip: 	      10.11.13.1
+	mask: 255.255.255.0
+
+Configuración Red DHCP:
+	ip:				10.11.13.2
+	mask:			255.255.255.0
+	ip-inferior:	10.11.13.4
+	ip-superior:	10.11.13.254
+
+
+*****	APROVISIONAMIENTO DE LA MÁQUINA VIRTUAL	*****
+
+Una vez que se ha modificado la red Host-Only-Adapter en Virtualbox basta con ejecutar el comando
+
+			vagrant up
+
+Para que el aprovisionamiento realizado dentro del Vagrantfile realice la construcción de las máquinas
+virtuales y la respectiva instalación y configuración de NFS, HAProxy y los paquetes de OpenMPI.
+
+
+*****	PROBANDO  NFS (Network File System)	*****
+
+Para probar la instalación del NFS se deberá correr en el nodo maestro el comando 
+
+			touch /shared/demo
+
+Para luego invocar el comando 
+
+			ls -l /shared/demo
+
+desde cualquiera de los nodos anfitrión y el archivo demo será visible desde cualquiera de ellos.
+
+
+
+*****	PROBANDO HAProxy	*****
+
+Después de haberse ejecutado el comando de Vagrant up, basta con realizar una escucha a través del puerto que se le asignó,
+que en nuestro caso será el 3306 utilizando el comando
+
+			ss -tunelp | grep 3306
+
+
+*****	EJECUTANDO Y PROBANDO OPENMPI	*****
+
+A pesar de todas las preparaciones preliminares realizadas y automatizadas por el Vagrantfile, OpenMPI tiene otros aspectos a tomar
+en cuenta para su correcto funcionamiento y los cuales serán mencionados a continuación.
+
+OpenMPI requiere del servicio de ssh para poder funcionar. De esta forma también fue necesario el aprovisionar el servicio de SSH en el
+Vagranfile para que estuviese listo una vez aprovisionadas todas las máquinas virtuales. Para poder realizar los permisos de comunicación
+entre el nodo maestro y los nodos anfitriones, se debe desarrollar una llave desde el nodo maestro utilizando el comando
+
+			ssh-keygen -t rsa
+
+Este comando te pedirá elegir una ubicación para almacenar una contraseña los cuales no son necesarios rellenar, así la llave pública y la
+llave privada se crearán en la ubicación por defecto. Acto seguido necesitaremos copiar la llave pública (id_rsa.pub) a la carpeta la cual
+estamos compartiendo con los demás nodos utilizando NFS:
+
+			cp /home/vagrant/.ssh/id_rsa.pub /shared
+
+ Y luego accederemos desde cada uno de los nodos se debe de ejecutar el siguiente comando
+
+			cat /shared/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys
+
+de forma que podamos configurar los permisos para el uso del servicio de SSH. Ahora ya debería estar funcional pero si quedan dudas es 
+posible cerciorarnos utilizando el servicio de SSH desde dentro del nodo maestro con
+
+			ssh <hostname/ip del nodo>
+
+ Una vez hayamos comprobado la funcionalidad del servicio de SSH, podemos compilar y correr programas en c desde el mismo nodo
+con el que estemos trabajando o designando las tareas a partir del nodo maestro. Para realizar esto se ha añadido un programa en el repositorio
+que funciona igual al programa "Hola Mundo" el cual indicará desde qué nodo está corriendo el programa. 
+
+Primero compilaremos el programa mpiExample.c y crearemos un archivo compilado en la carpeta /shared/ la cual es la carpeta a través de la cual
+estamos compartiendo archivos entre todos los nodos. Para esto usaremos el comando
+
+			mpicc mpiExample.c -o /shared/mpiExample
+
+Donde mpicc es el compilador de código. Con esto habremos creado un ejecutable el cual estará listo para correrse. 
+
+Si se desea realizar la ejecución desde nuestro nodo maestro bastará con invocar el comando
+
+			mpirun  -np 10 /shared/mpiExample
+
+O si deseamos realizar una ejecución simultánea desde todos los nodos, podremos hacerlo utilizando el comando
+
+			mpirun --mca oob_tcp_if_include 10.11.13.0/24 -host master,10.11.13.5 --map-by node -np 10 /shared/mpiExample
+
